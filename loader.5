@@ -227,6 +227,7 @@ function library:draggify(frame, no_logo, direct)
             dragging = false
             if drag_started then
                 library.drag_frame.Visible = false
+                library.drag_logo.Visible = false
                 frame.Position = fake_position
                 frame.Visible = true
                 drag_started = false
@@ -254,8 +255,14 @@ function library:draggify(frame, no_logo, direct)
                 library.drag_frame.BackgroundTransparency = 0
                 library.drag_inside.Size = dim2(1, -2, 1, -2)
                 library.drag_inside.BackgroundTransparency = 0
+
+                -- значок M на призрачной рамке (раньше Visible оставался false, поэтому M пропадал)
+                local fs = frame.AbsoluteSize
+                library.drag_logo.TextSize = clamp(floor(min(fs.X, fs.Y) * 0.35), 20, 110)
+                library.drag_logo.Visible = not no_logo
                 library.drag_logo.TextTransparency = no_logo and 1 or 0
                 library.drag_logo.Rotation = 0
+
                 library.drag_frame.Visible = true
                 frame.Visible = false
             end
@@ -524,8 +531,11 @@ library.drag_gradient = library:create("UIGradient", {
 })
 library:update_drag(themes.preset.pink)
 
+-- значок M по центру призрачной рамки
 local LogoFallback = Instance.new("TextLabel")
 LogoFallback.Name = "LogoFallback"
+LogoFallback.AnchorPoint = Vector2.new(0.5, 0.5)
+LogoFallback.Position = UDim2.new(0.5, 0, 0.5, 0)
 LogoFallback.Size = UDim2.new(1, 0, 1, 0)
 LogoFallback.BackgroundTransparency = 1
 LogoFallback.Text = "M"
@@ -901,7 +911,8 @@ function library:window(properties)
     end
 
     -- размер и позиция главного окна (можно передать size в library:window)
-    local msize = (properties and properties.size) or dim2(0, 604, 0, 628)
+    -- ВАЖНО: дефолтный размер уменьшен (было 604x628), теперь окно компактнее
+    local msize = (properties and properties.size) or dim2(0, 530, 0, 590)
     local sx, sy = msize.X.Offset, msize.Y.Offset
     library.main_w, library.main_h = sx, sy
     function library.panel_origin()
@@ -965,7 +976,7 @@ function library:window(properties)
     })
     library:apply_theme(sg, "contrast", "Color")
 
-    library:make_resizable(items.main_holder)
+    -- (убран повторный make_resizable: он уже вызывается внутри library:panel)
 
     setmetatable(window, library)
 
