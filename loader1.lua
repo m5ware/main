@@ -2,14 +2,13 @@
 --[[
 	Blossom UI Library (single file)
 
-	local Blossom = loadstring(readfile("Blossom.luau"))()      -- executor
-	local Blossom = require(path.to.Blossom)                    -- Studio
+	Использование в executor:
+		local Blossom = loadstring(readfile("Blossom.luau"))()
+		local Window = Blossom.new({ Title = "Blossom", Script = "blossom.lua", Build = "operation one" })
 
-	local Window = Blossom.new({ Title = "Blossom", Script = "blossom.lua", Build = "operation one" })
-	Window:Category("Combat")
-	local Rage = Window:Tab({ Name = "Rage", Icon = "target" })
-	local Main = Rage:Section({ Name = "Main", Icon = "robot", Side = 1 })
-	Main:Toggle({ Name = "Enabled", Default = true, Keybind = Enum.KeyCode.C, Callback = print })
+	Использование в Studio:
+		local Blossom = require(path.to.Blossom)
+		local Window = Blossom.new({ Title = "Blossom", Script = "blossom.lua", Build = "operation one" })
 
 	Elements: Toggle, Slider, RangeSlider, Dropdown, Colorpicker, Keybind, Button,
 	          Textbox, Label, Divider, Listbox.
@@ -2743,6 +2742,22 @@ local m5ware = { Themes = Themes, ThemeOrder = ThemeOrder, Metrics = Metrics, Fo
 
 local LastWindow
 
+-- Защищённый вызов new: если библиотека не загрузилась, выводим понятную ошибку,
+-- а не "attempt to index nil with 'new'".
+local function safeNew(win, options)
+	if type(win) ~= "table" or type(win.new) ~= "function" then
+		error(
+			"Blossom library failed to load: Blossom = " .. tostring(win) ..
+			", Blossom.new = " .. tostring(type(win) == "table" and win.new or nil) ..
+			". Проверьте, что файл Blossom.luau существует, не пуст и заканчивается 'return Blossom'.",
+			2
+		)
+	end
+	return win.new(options)
+end
+
+local Blossom = { new = nil }
+
 function Blossom.new(options)
 	options = options or {}
 	local globalEnv = typeof(getgenv) == "function" and getgenv() or nil
@@ -2943,5 +2958,8 @@ function Blossom.new(options)
 
 	return win
 end
+
+-- Безопасная обёртка для пользователей, которые хотят вызывать Blossom.new извне.
+Blossom.SafeNew = function(options) return safeNew(Blossom, options) end
 
 return Blossom
