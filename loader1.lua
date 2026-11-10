@@ -3000,4 +3000,13 @@ function Blossom.new(options)
 	return win
 end
 
+local Window = Blossom.new({ Title = "Blossom", Script = "blossom.lua", Build = "operation one" })
+Window:Category("Combat")
+local Rage = Window:Tab({ Name = "Rage", Icon = "target" })
+local Main = Rage:Section({ Name = "Main", Icon = "robot", Side = 1 })
+Main:Toggle({ Name = "Enabled", Default = true, Keybind = Enum.KeyCode.C, Callback = print })
+
+local Settings = Window:Tab({ Name = "Settings", Icon = "gear" })
+Window:BuildSettings(Settings)
+
 return Blossom
