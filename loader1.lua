@@ -1,11 +1,11 @@
 --!nocheck
 --[[
-	Blossom UI Library (single file)
+	m5ware UI Library (single file)
 
-	local Blossom = loadstring(readfile("Blossom.luau"))()      -- executor
-	local Blossom = require(path.to.Blossom)                    -- Studio
+	local m5ware = loadstring(readfile("m5ware.luau"))()      -- executor
+	local m5ware = require(path.to.m5ware)                    -- Studio
 
-	local Window = Blossom.new({ Title = "Blossom", Script = "blossom.lua", Build = "operation one" })
+	local Window = m5ware.new({ Title = "m5ware", Script = "m5ware.lua", Build = "release" })
 	Window:Category("Combat")
 	local Rage = Window:Tab({ Name = "Rage", Icon = "target" })
 	local Main = Rage:Section({ Name = "Main", Icon = "robot", Side = 1 })
@@ -16,7 +16,7 @@
 	Toggle and Label also accept Keybind = and Color = for inline controls.
 	Every element returns an object with .Value and :Set(value, silent).
 
-	Options for Blossom.new: Title, Script, Build, Theme, MenuKey, Font (a font family string),
+	Options for m5ware.new: Title, Script, Build, Theme, MenuKey, Font (a font family string),
 	Size and MinSize (Vector2), Resizable (default true). Window:SetSize(width, height) resizes from code.
 ]]
 
@@ -25,7 +25,7 @@ local UserInputService = game:GetService("UserInputService")
 local RunService = game:GetService("RunService")
 local HttpService = game:GetService("HttpService")
 
-local Blossom = {}
+local m5ware = {}
 
 local INTER = "rbxassetid://12187365364"
 local Vec2, Dim2 = Vector2.new, UDim2.new
@@ -47,7 +47,7 @@ local Metrics = {
 }
 
 local Themes = {
-	Blossom = {
+	m5ware = {
 		Background = RGB(42, 44, 52), Tab = RGB(48, 50, 58), Outline = RGB(65, 68, 80), Inline = RGB(56, 58, 68),
 		Text = RGB(232, 234, 245), InactiveText = RGB(126, 130, 148), Accent = RGB(113, 159, 226), Element = RGB(54, 57, 68),
 		Gradient = RGB(172, 187, 209), Shadow = RGB(0, 0, 0), HoveredElement = RGB(72, 77, 90),
@@ -103,7 +103,7 @@ local Themes = {
 		Gradient = RGB(190, 190, 190), Shadow = RGB(0, 0, 0), HoveredElement = RGB(67, 70, 72),
 	},
 }
-local ThemeOrder = { "Blossom", "Afterglow", "Frostbite", "Volt", "Obsidian", "Sakura Drift", "Neon Mirage", "Copper Dust", "Abyss", "Porcelain", "Graphite" }
+local ThemeOrder = { "m5ware", "Afterglow", "Frostbite", "Volt", "Obsidian", "Sakura Drift", "Neon Mirage", "Copper Dust", "Abyss", "Porcelain", "Graphite" }
 local ThemeKeys = {
 	{ "Background", "Background" }, { "Tab", "Tab" }, { "Outline", "Outline" }, { "Inline", "Inline" },
 	{ "Text", "Text" }, { "Inactive Text", "InactiveText" }, { "Accent", "Accent" }, { "Element", "Element" },
@@ -123,15 +123,15 @@ local Fonts = {
 local FontOrder = { "Inter", "Builder Sans", "Roboto", "Montserrat", "Source Sans Pro", "Ubuntu", "Nunito", "Arimo" }
 local WeightOrder = { "Regular", "Medium", "SemiBold", "Bold" }
 
-local Current = table.clone(Themes.Blossom)
+local Current = table.clone(Themes.m5ware)
 local Casing = "Normal"
 local FontFamily = INTER
 local BodyWeight = Enum.FontWeight.SemiBold
 
-Blossom.Themes = Themes
-Blossom.ThemeOrder = ThemeOrder
-Blossom.Metrics = Metrics
-Blossom.Fonts = Fonts
+m5ware.Themes = Themes
+m5ware.ThemeOrder = ThemeOrder
+m5ware.Metrics = Metrics
+m5ware.Fonts = Fonts
 
 -------------------------------------------------------------------------------
 -- Animator: one render-step loop driving springs. Retargeting keeps velocity,
@@ -2503,7 +2503,7 @@ function Window:Toggle()
 end
 
 local ConfigMemory = {}
-local function configPath(name) return "Blossom/" .. name .. ".json" end
+local function configPath(name) return "m5ware/" .. name .. ".json" end
 
 function Window:_serialize()
 	local data = {}
@@ -2557,9 +2557,9 @@ function Window:ListConfigs()
 	local names = {}
 	local listed = false
 	if typeof(listfiles) == "function" and typeof(isfolder) == "function" then
-		local ok, hasFolder = pcall(isfolder, "Blossom")
+		local ok, hasFolder = pcall(isfolder, "m5ware")
 		if ok and hasFolder then
-			local okFiles, files = pcall(listfiles, "Blossom")
+			local okFiles, files = pcall(listfiles, "m5ware")
 			if okFiles and type(files) == "table" then
 				listed = true
 				for _, path in files do
@@ -2580,8 +2580,8 @@ function Window:SaveConfig(name)
 	local json = self:_serialize()
 	if typeof(writefile) == "function" then
 		if typeof(isfolder) == "function" and typeof(makefolder) == "function" then
-			local ok, exists = pcall(isfolder, "Blossom")
-			if ok and not exists then pcall(makefolder, "Blossom") end
+			local ok, exists = pcall(isfolder, "m5ware")
+			if ok and not exists then pcall(makefolder, "m5ware") end
 		end
 		if pcall(writefile, configPath(name), json) then return end
 	end
@@ -2610,7 +2610,7 @@ function Window:DeleteConfig(name)
 	ConfigMemory[name] = nil
 end
 
-local AUTOLOAD_PATH = "Blossom/autoload.txt"
+local AUTOLOAD_PATH = "m5ware/autoload.txt"
 local AutoloadMemory
 
 local function readAutoload()
@@ -2630,8 +2630,8 @@ local function writeAutoload(name)
 		AutoloadMemory = name
 	elseif name then
 		if typeof(isfolder) == "function" and typeof(makefolder) == "function" then
-			local ok, exists = pcall(isfolder, "Blossom")
-			if ok and not exists then pcall(makefolder, "Blossom") end
+			local ok, exists = pcall(isfolder, "m5ware")
+			if ok and not exists then pcall(makefolder, "m5ware") end
 		end
 		if not pcall(writefile, AUTOLOAD_PATH, name) then
 			AutoloadMemory = name
@@ -2727,7 +2727,7 @@ function Window:_buildWatermark(options)
 	local function sep()
 		return new("Frame", { Bg = "Outline", Position = Offset(0, 7), Size = Offset(1, 14) }, frame)
 	end
-	local first, firstSep = text(options.Script or "blossom.lua", 12, Enum.FontWeight.Medium), sep()
+	local first, firstSep = text(options.Script or "m5ware.lua", 12, Enum.FontWeight.Medium), sep()
 	local second, secondSep = text(options.Build or "release", 12, Enum.FontWeight.SemiBold), sep()
 	local userIcon = makeIcon(frame, "user", 13, "Text", "Background")
 	local third = text(("%s (@%s)"):format(player.DisplayName or "User", player.Name or "User"), 11, Enum.FontWeight.SemiBold)
@@ -2799,10 +2799,10 @@ end
 
 local LastWindow
 
-function Blossom.new(options)
+function m5ware.new(options)
 	options = options or {}
 	local globalEnv = typeof(getgenv) == "function" and getgenv() or nil
-	local previous = LastWindow or (globalEnv and globalEnv.__BlossomWindow)
+	local previous = LastWindow or (globalEnv and globalEnv.__m5wareWindow)
 	if previous then pcall(previous.Destroy, previous) end
 	if options.Theme and Themes[options.Theme] then
 		for key, value in Themes[options.Theme] do Current[key] = value end
@@ -2815,17 +2815,17 @@ function Blossom.new(options)
 	local win = setmetatable({
 		Width = startW, Height = startH, MinSize = minSize, ColumnW = (startW - Metrics.ContentX - Metrics.Pad * 3) / 2,
 		ResizeJobs = {}, ResizeHandles = {},
-		Title = options.Title or "Blossom", Tabs = {}, Sections = {}, Columns = {}, Index = {}, Binds = {}, Colors = {}, Flags = {},
+		Title = options.Title or "m5ware", Tabs = {}, Sections = {}, Columns = {}, Index = {}, Binds = {}, Colors = {}, Flags = {},
 		ThemeRows = {}, HotkeyEntries = {}, HotkeyOrder = {}, NotifyStack = {}, Connections = {}, Jobs = {}, Moved = {}, PendingThemeKeys = {}, FlagOwners = {},
 		ThemeClock = 0, SidebarY = Metrics.FirstCategory, SidebarHasTabs = false, SidebarAfterCategory = false,
-		Visible = true, ThemeName = options.Theme or "Blossom", MenuKey = options.MenuKey or Enum.KeyCode.RightShift,
+		Visible = true, ThemeName = options.Theme or "m5ware", MenuKey = options.MenuKey or Enum.KeyCode.RightShift,
 		LastPopupTime = 0, DropdownClosedAt = 0,
 	}, Window)
 	ensureLoop()
 	LastWindow, Focus = win, win
-	if globalEnv then globalEnv.__BlossomWindow = win end
+	if globalEnv then globalEnv.__m5wareWindow = win end
 
-	local screen = new("ScreenGui", { Name = "Blossom", ResetOnSpawn = false, IgnoreGuiInset = true, ZIndexBehavior = Enum.ZIndexBehavior.Sibling, DisplayOrder = 100 })
+	local screen = new("ScreenGui", { Name = "m5ware", ResetOnSpawn = false, IgnoreGuiInset = true, ZIndexBehavior = Enum.ZIndexBehavior.Sibling, DisplayOrder = 100 })
 	guiParent(screen)
 	win.Screen = screen
 	ScreenRef = screen
@@ -3000,13 +3000,4 @@ function Blossom.new(options)
 	return win
 end
 
-local Window = Blossom.new({ Title = "Blossom", Script = "blossom.lua", Build = "operation one" })
-Window:Category("Combat")
-local Rage = Window:Tab({ Name = "Rage", Icon = "target" })
-local Main = Rage:Section({ Name = "Main", Icon = "robot", Side = 1 })
-Main:Toggle({ Name = "Enabled", Default = true, Keybind = Enum.KeyCode.C, Callback = print })
-
-local Settings = Window:Tab({ Name = "Settings", Icon = "gear" })
-Window:BuildSettings(Settings)
-
-return Blossom
+return m5ware
