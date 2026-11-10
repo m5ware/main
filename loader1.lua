@@ -2,13 +2,14 @@
 --[[
 	Blossom UI Library (single file)
 
-	Использование в executor:
-		local Blossom = loadstring(readfile("Blossom.luau"))()
-		local Window = Blossom.new({ Title = "Blossom", Script = "blossom.lua", Build = "operation one" })
+	local Blossom = loadstring(readfile("Blossom.luau"))()      -- executor
+	local Blossom = require(path.to.Blossom)                    -- Studio
 
-	Использование в Studio:
-		local Blossom = require(path.to.Blossom)
-		local Window = Blossom.new({ Title = "Blossom", Script = "blossom.lua", Build = "operation one" })
+	local Window = Blossom.new({ Title = "Blossom", Script = "blossom.lua", Build = "operation one" })
+	Window:Category("Combat")
+	local Rage = Window:Tab({ Name = "Rage", Icon = "target" })
+	local Main = Rage:Section({ Name = "Main", Icon = "robot", Side = 1 })
+	Main:Toggle({ Name = "Enabled", Default = true, Keybind = Enum.KeyCode.C, Callback = print })
 
 	Elements: Toggle, Slider, RangeSlider, Dropdown, Colorpicker, Keybind, Button,
 	          Textbox, Label, Divider, Listbox.
@@ -23,6 +24,8 @@ local Players = game:GetService("Players")
 local UserInputService = game:GetService("UserInputService")
 local RunService = game:GetService("RunService")
 local HttpService = game:GetService("HttpService")
+
+local Blossom = {}
 
 local INTER = "rbxassetid://12187365364"
 local Vec2, Dim2 = Vector2.new, UDim2.new
@@ -124,6 +127,11 @@ local Current = table.clone(Themes.Blossom)
 local Casing = "Normal"
 local FontFamily = INTER
 local BodyWeight = Enum.FontWeight.SemiBold
+
+Blossom.Themes = Themes
+Blossom.ThemeOrder = ThemeOrder
+Blossom.Metrics = Metrics
+Blossom.Fonts = Fonts
 
 -------------------------------------------------------------------------------
 -- Animator: one render-step loop driving springs. Retargeting keeps velocity,
@@ -258,7 +266,11 @@ local function ensureLoop()
 	if FrameConnection then return end
 	FrameConnection = RunService.RenderStepped:Connect(function(dt)
 		stepAnimator(dt)
-		for job in Jobs do job(dt) end
+		local currentJobs = {}
+		for job in Jobs do table.insert(currentJobs, job) end
+		for _, job in currentJobs do
+			if Jobs[job] then job(dt) end
+		end
 		sweepHover()
 	end)
 end
@@ -373,6 +385,7 @@ local function new(class, props, parent)
 			elseif key == "Radius" then radius = value
 			elseif key == "Border" then border = value
 			elseif key == "Weight" then
+				if not Cased[inst] then Cased[inst] = {} end
 				Cased[inst].Weight = value
 				inst.FontFace = fontOf(value)
 			elseif (key == "Text" and class ~= "TextBox" or key == "PlaceholderText") and TEXT_CLASSES[class] then
@@ -403,8 +416,7 @@ local function new(class, props, parent)
 	return inst
 end
 
--- Top-aligned text at a computed whole-pixel offset. Roblox blurs glyphs that land on half pixels,
--- which is what centred alignment produces when the free space is odd.
+-- Top-aligned text at a computed whole-pixel offset.
 local function capOffset(rowH, size)
 	local capHeight = round(size * 0.7)
 	return math.ceil((rowH - capHeight) / 2 - round(size * 0.16))
@@ -427,8 +439,6 @@ local function centeredLabel(parent, width, o)
 	local text = label(parent, o)
 	local y, rowH = text.Position.Y.Offset, o.RowH or Metrics.Row
 	local function fit()
-		-- The box keeps the full available width. Sizing a truncating label from its own
-		-- bounds shrinks it further each time, because truncated text measures narrower.
 		text.Size = Offset(width - 12, rowH)
 		text.Position = Offset(floor((width - math.min(math.ceil(text.TextBounds.X), width - 12)) / 2), y)
 	end
@@ -448,25 +458,33 @@ local function addGradient(inst)
 	return gradient
 end
 
--- Native UIShadow styles, fitted to the original: a CSS-like blur (2 sigma) with Spread split across both sides.
 local Shadows = {
-	Large = { Blur = 10, Spread = 0, Transparency = 0.3 },    -- window and popup windows
-	PickerKnob = { Blur = 6, Spread = 6, Transparency = 0.5 }, -- colour picker knobs only
+	Large = { Blur = 10, Spread = 0, Transparency = 0.3 },
+	PickerKnob = { Blur = 6, Spread = 6, Transparency = 0.5 },
 }
 
--- UIShadow is still rolling out, so clients without it simply draw no shadow.
-local ShadowsAvailable = pcall(function() Instance.new("UIShadow"):Destroy() end)
+local ShadowsAvailable = pcall(function()
+	local shadow = Instance.new("UIShadow")
+	shadow.BlurRadius = UDim.new(0, 10)
+	shadow.Spread = Offset(0, 0)
+	shadow.Transparency = 0.3
+	shadow.Color = Color3.new(0, 0, 0)
+	shadow:Destroy()
+end)
 
 local function addShadow(inst, style)
 	if not ShadowsAvailable then return nil end
-	local preset = Shadows[style]
-	local shadow = Instance.new("UIShadow")
-	shadow.BlurRadius = UDim.new(0, preset.Blur)
-	shadow.Spread = Offset(preset.Spread, preset.Spread)
-	shadow.Transparency = preset.Transparency
-	bind(shadow, "Color", "Shadow")
-	shadow.Parent = inst
-	return shadow
+	local ok, shadow = pcall(function()
+		local preset = Shadows[style]
+		local s = Instance.new("UIShadow")
+		s.BlurRadius = UDim.new(0, preset.Blur)
+		s.Spread = Offset(preset.Spread, preset.Spread)
+		s.Transparency = preset.Transparency
+		bind(s, "Color", "Shadow")
+		s.Parent = inst
+		return s
+	end)
+	return ok and shadow or nil
 end
 
 local function fire(callback, ...)
@@ -479,8 +497,6 @@ local function isClick(input)
 	return input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch
 end
 
--- AbsolutePosition and GetMouseLocation use different origins whenever a top bar inset exists.
--- Offsetting by the ScreenGui's own AbsolutePosition puts the pointer in AbsolutePosition space.
 local ScreenRef
 
 local function mousePos()
@@ -499,7 +515,6 @@ local function inside(frame, point, margin)
 	return point.X >= p.X - margin and point.X <= p.X + s.X + margin and point.Y >= p.Y - margin and point.Y <= p.Y + s.Y + margin
 end
 
--- Polls once per rendered frame, so dragging costs one update per frame however fast the mouse reports.
 local function beginDrag(onMove, onEnd, onFrame)
 	local last
 	local function job(dt)
@@ -523,8 +538,6 @@ local function beginDrag(onMove, onEnd, onFrame)
 	end)
 end
 
--- Roblox skips MouseLeave on fast movement and fires MouseEnter for covered objects, so hover
--- is confirmed against the pointer every frame instead of trusting those events alone.
 local Focus
 local HoverSet = {}
 
@@ -572,9 +585,13 @@ end
 function sweepHover()
 	if next(HoverSet) == nil then return end
 	local point = mousePos()
+	local toLeave = {}
 	for inst, leave in HoverSet do
-		if not inside(inst, point) or not isShown(inst) or covered(inst, point) then leave() end
+		if not inside(inst, point) or not isShown(inst) or covered(inst, point) then
+			table.insert(toLeave, leave)
+		end
 	end
+	for _, leave in toLeave do leave() end
 end
 
 -------------------------------------------------------------------------------
@@ -591,7 +608,6 @@ end
 local function captureFade(root)
 	local entries = {}
 	local function add(inst, prop)
-		-- A value that's still animating would be restored stale when the fade ends.
 		if NoFade[inst] or (Tracks[inst] and Tracks[inst][prop]) then return end
 		local base = inst[prop]
 		if base < 1 then table.insert(entries, { inst, prop, base }) end
@@ -653,7 +669,6 @@ end
 
 -------------------------------------------------------------------------------
 -- Icons: drawn from frames on a 16x16 grid, so no decals have to be uploaded
--- { kind, x, y, w, h, radius, rotation }   kind: f = fill, h = hole, r = ring
 -------------------------------------------------------------------------------
 
 local Icons = {
@@ -747,7 +762,6 @@ local function makeIcon(parent, name, size, color, hole, props)
 	return icon
 end
 
--- Hover and press colours resolved through the theme, so a theme change can't strand a stale colour.
 local function interactive(target, base, hover, press, handle)
 	local state = { Hover = false, Press = false }
 	local source = handle or target
@@ -778,12 +792,13 @@ end
 
 local function keyName(key)
 	if key == nil then return "-" end
+	local name = typeof(key) == "EnumItem" and key.Name or tostring(key)
 	local short = {
 		LeftShift = "LS", RightShift = "RS", LeftControl = "LC", RightControl = "RC", LeftAlt = "LA", RightAlt = "RA",
 		MouseButton1 = "M1", MouseButton2 = "M2", MouseButton3 = "M3", Return = "Ent", Backspace = "Bk",
 		One = "1", Two = "2", Three = "3", Four = "4", Five = "5", Six = "6", Seven = "7", Eight = "8", Nine = "9", Zero = "0",
 	}
-	return short[key.Name] or key.Name
+	return short[name] or name
 end
 
 local function makeChip(parent, text, anchorRight, outerHeight)
@@ -797,7 +812,6 @@ local function makeChip(parent, text, anchorRight, outerHeight)
 	return chip, caption
 end
 
--- Sizes a chip around its text. Widths given to onFit are outer widths, borders included.
 local function fitChip(chip, text, minimum, onFit)
 	local height = chip.Size.Y.Offset
 	local function apply(bounds)
@@ -813,7 +827,6 @@ local function fitChip(chip, text, minimum, onFit)
 	return apply, fit
 end
 
--- Click a slider amount to type a value; Enter or clicking away commits, anything non-numeric reverts.
 local function makeEditable(chip, text, read, write, apply, fit)
 	local height = chip.Size.Y.Offset
 	local hit = new("TextButton", { Size = Dim2(1, 0, 1, 0), ZIndex = 2 }, chip)
@@ -867,7 +880,6 @@ function Column:Layout(animated)
 end
 
 function Column:ClampScroll()
-	-- Uses the window's own height so it's right on the same frame as a resize.
 	self.Target = math.clamp(self.Target, 0, math.max(0, self.ContentH - (self.Tab.Window.Height - Metrics.Pad * 2)))
 end
 
@@ -998,7 +1010,6 @@ local function addInlineControls(section, item, options, name)
 	return keybind, color
 end
 
--- Every element joins configs automatically under Tab/Section/Name unless NoSave is set.
 local function register(section, object, options, item)
 	local win = section.Window
 	win.FlagOwners[item] = object
@@ -1146,7 +1157,6 @@ local function knobPixels(alpha, width)
 	return round(Metrics.TrackInset + alpha * (width - Metrics.TrackInset * 2))
 end
 
--- Pixel positions keep the knob centred exactly: the same overhang above and below the track.
 local function placeKnob(knob, pixels, animated)
 	place(knob, "Position", Offset(pixels - floor(Metrics.Knob / 2), floor((Metrics.TrackH - 2 - Metrics.Knob) / 2)), animated, "Follow")
 end
@@ -1281,14 +1291,21 @@ function Section:RangeSlider(options)
 	return range
 end
 
--- The option list is its own floating panel above the UI, so opening it never moves the section.
 local function buildDropdown(win, parent, options)
 	local dropdown = {
 		Options = options.Options or {}, Multi = options.Multi == true, Open = false,
 		Value = options.Multi and {} or options.Default, Callback = options.Callback,
 	}
 	if options.Multi and options.Default then
-		for _, value in options.Default do dropdown.Value[value] = true end
+		if type(options.Default) == "table" then
+			for k, v in options.Default do
+				if type(k) == "number" then
+					dropdown.Value[v] = true
+				elseif v == true then
+					dropdown.Value[k] = true
+				end
+			end
+		end
 	end
 
 	local input = new("TextButton", {
@@ -1323,8 +1340,6 @@ local function buildDropdown(win, parent, options)
 		return #names > 0 and table.concat(names, ", ") or "None"
 	end
 
-	-- Selection, hover and the panel's reveal are separate numbers combined on every write.
-	-- Nothing stores a transparency to restore later, so interrupted animations can't leave stale rows.
 	local function applyRow(row)
 		local reveal = dropdown.Reveal
 		row.Button.BackgroundTransparency = 1 - math.max(row.Sel, row.Hov) * reveal
@@ -1405,7 +1420,6 @@ local function buildDropdown(win, parent, options)
 		panelH = math.clamp(#dropdown.Options, 1, options.MaxRows or 10) * Metrics.ListRowH
 	end
 
-	-- Called each frame while open, so the panel stays attached while the page scrolls or the window moves.
 	local function follow()
 		local p, s = input.AbsolutePosition, input.AbsoluteSize
 		local screen = win.Screen.AbsolutePosition.Y + win.Screen.AbsoluteSize.Y
@@ -1452,7 +1466,15 @@ local function buildDropdown(win, parent, options)
 	function dropdown:Set(newValue, silent)
 		if dropdown.Multi then
 			dropdown.Value = {}
-			for _, option in newValue do dropdown.Value[option] = true end
+			if type(newValue) == "table" then
+				for k, v in newValue do
+					if type(k) == "number" then
+						dropdown.Value[v] = true
+					elseif v == true then
+						dropdown.Value[k] = true
+					end
+				end
+			end
 		else
 			dropdown.Value = newValue
 		end
@@ -1471,7 +1493,6 @@ local function buildDropdown(win, parent, options)
 
 	dropdown.Input, dropdown.Panel = input, panel
 	input.MouseButton1Click:Connect(function()
-		-- The press that closes an open list must not reopen it on release.
 		if win.DropdownClosedBy == input and os.clock() - win.DropdownClosedAt < 0.25 then return end
 		dropdown:Toggle()
 	end)
@@ -1607,7 +1628,6 @@ function Section:_beginDrag()
 		for position, other in column.Sections do
 			if other ~= self then
 				local middle = column.Scroll.AbsolutePosition.Y - column.Scroll.CanvasPosition.Y + other.Y + other.TotalH / 2
-				-- A dead zone either side of each midpoint stops sections trading places repeatedly.
 				local bias = (current and position < current) and -14 or 14
 				if point.Y > middle + bias then index += 1 end
 			end
@@ -1655,7 +1675,6 @@ function Section:_beginDrag()
 
 	local function frame(point)
 		if not lifted then return end
-		-- Scroll the column while the pointer rests near its top or bottom edge.
 		local column = self.Column
 		local scroll = column.Scroll
 		local top, bottom = scroll.AbsolutePosition.Y, scroll.AbsolutePosition.Y + scroll.AbsoluteSize.Y
@@ -1730,15 +1749,29 @@ end
 -------------------------------------------------------------------------------
 
 local function guiParent(screen)
-	local ok = false
 	if typeof(gethui) == "function" then
-		ok = pcall(function() screen.Parent = gethui() end)
+		pcall(function()
+			local hui = gethui()
+			if hui then screen.Parent = hui end
+		end)
 	end
-	if not ok then
-		ok = pcall(function() screen.Parent = game:GetService("CoreGui") end)
+	if not screen.Parent then
+		if typeof(syn) == "table" and typeof(syn.protect_gui) == "function" then
+			pcall(syn.protect_gui, screen)
+		elseif typeof(protectgui) == "function" then
+			pcall(protectgui, screen)
+		end
+		pcall(function() screen.Parent = game:GetService("CoreGui") end)
 	end
-	if not ok or not screen.Parent then
-		screen.Parent = Players.LocalPlayer:WaitForChild("PlayerGui")
+	if not screen.Parent then
+		local lp = Players.LocalPlayer
+		if not lp then
+			Players:GetPropertyChangedSignal("LocalPlayer"):Wait()
+			lp = Players.LocalPlayer
+		end
+		if lp then
+			screen.Parent = lp:WaitForChild("PlayerGui")
+		end
 	end
 end
 
@@ -1883,7 +1916,6 @@ function Window:Notify(options)
 	end
 	stack()
 	entry.Fader:Show()
-	-- Rapid actions shouldn't bury the screen.
 	if #self.NotifyStack > 6 then self.NotifyStack[#self.NotifyStack].Dismiss() end
 	task.delay(options.Duration or 3, entry.Dismiss)
 end
@@ -1893,7 +1925,6 @@ function Window:ApplyTheme(name, silent)
 	if not theme then return end
 	for key, value in theme do Current[key] = value end
 	self.ThemeName = name
-	-- Off-screen pages take the new colours immediately, so only what's visible animates.
 	local hidden = {}
 	for _, tab in self.Tabs do
 		if tab ~= self.CurrentTab then
@@ -1905,7 +1936,6 @@ function Window:ApplyTheme(name, silent)
 	if not silent then self:Notify(('Applied "%s" theme.'):format(name)) end
 end
 
--- Dragging a theme colour would otherwise repaint hundreds of instances per mouse movement.
 function Window:SetThemeColor(key, color)
 	Current[key] = color
 	self.PendingThemeKeys[key] = true
@@ -1915,7 +1945,9 @@ function Window:_flushThemeColors(dt)
 	self.ThemeClock += dt
 	if next(self.PendingThemeKeys) == nil or self.ThemeClock < 1 / 30 then return end
 	self.ThemeClock = 0
-	for key in self.PendingThemeKeys do
+	local keys = {}
+	for key in self.PendingThemeKeys do table.insert(keys, key) end
+	for _, key in keys do
 		local set = ByKey[key]
 		if set then
 			for inst, prop in set do snap(inst, prop, Current[key]) end
@@ -2001,13 +2033,11 @@ function Window:_modalPosition(offsetY)
 	return Offset(floor((self.Width - 420) / 2), floor((self.Height - 340) / 2) + offsetY)
 end
 
--- Sizes stay even so a centre anchor still lands on whole pixels.
 local function evenClamp(value, minimum, maximum)
 	local clamped = math.clamp(floor(value), minimum, math.max(minimum, maximum))
 	return clamped - clamped % 2
 end
 
--- The tab list and search box must both fit, however many tabs were added.
 function Window:_minHeight()
 	local needed = math.ceil(self.SidebarY + Metrics.TabH / 2 + Metrics.Gap + Metrics.SearchH + Metrics.Pad)
 	return evenClamp(math.max(self.MinSize.Y, needed + needed % 2), 0, math.huge)
@@ -2034,7 +2064,6 @@ function Window:_applySize(width, height)
 	if self.Search and not self.Search.Open then self.Search.Modal.Position = self:_modalPosition(0) end
 end
 
--- Resizes from code, keeping the window's top-left corner where it is.
 function Window:SetSize(width, height)
 	width = evenClamp(width, self.MinSize.X, math.huge)
 	height = evenClamp(height, self:_minHeight(), math.huge)
@@ -2098,7 +2127,6 @@ function Window:_makeDraggable(handle, target, allowed)
 	end)
 end
 
--- Input can reach the window background through anything above it, so check the pointer directly.
 function Window:_overControl(point)
 	if self.Search.Open then return true end
 	if self.OpenDropdown and inside(self.OpenDropdown.Panel, point) then return true end
@@ -2124,7 +2152,6 @@ end
 
 function Window:_popupFrame(width, height)
 	local wrapper = new("Frame", { Size = Offset(width, height), Visible = false, Active = true }, self.Popups)
-	-- A button, so nothing beneath the popup can take the click.
 	local body = new("TextButton", { Bg = "Background", Size = Dim2(1, 0, 1, 0), Radius = Metrics.PopupRadius, Border = "Outline" }, wrapper)
 	addShadow(body, "Large")
 	local controls = {}
@@ -2205,7 +2232,6 @@ function Window:_buildPicker()
 	end
 	local svKnob = ringKnob(sv)
 	picker.SVKnob = svKnob
-	-- The knob's centre travels 6px inside each edge, matching the original.
 	local INSET = (Metrics.PickerKnob + 4) / 2 - 1
 	local function along(scale) return round(INSET - INSET * 2 * scale) end
 	local function fromPointer(position, origin, length)
@@ -2221,8 +2247,6 @@ function Window:_buildPicker()
 	local hueKnob = ringKnob(hue)
 
 	local alphaBar = new("Frame", { Bg = "Background", Position = Offset(pad + 1, alphaY + 1), Size = Offset(width - pad * 2 - 2, barW - 2), Radius = Metrics.Radius, Border = "Outline" }, body)
-	-- A CanvasGroup is the only container whose UICorner clips its children, so the square
-	-- checker cells stay inside the rounded ends.
 	local alphaClip = new("CanvasGroup", { Name = "AlphaClip", BackgroundTransparency = 0, BackgroundColor3 = Color3.new(1, 1, 1), Size = Dim2(1, 0, 1, 0), Radius = Metrics.Radius }, alphaBar)
 	for column = 0, 48 do
 		for row = 0, 2 do
@@ -2267,7 +2291,6 @@ function Window:_buildPicker()
 		if picker.Animation then picker.Animation:Set(target.Animation or "None", true) end
 	end
 
-	-- Each hit area overhangs its control so knobs resting on an edge can still be grabbed.
 	local function dragArea(area, knob, update)
 		local hit = new("TextButton", { Position = Offset(-6, -6), Size = Dim2(1, 12, 1, 12), ZIndex = 5 }, area)
 		hit.InputBegan:Connect(function(input)
@@ -2361,7 +2384,6 @@ function Window:_buildSearch()
 		return row
 	end
 
-	-- Rows are matched to results and reused, so a keystroke only touches what actually changed.
 	local function sync()
 		local text = box.Text
 		setText(title, text ~= "" and text or "Search")
@@ -2376,17 +2398,21 @@ function Window:_buildSearch()
 				end
 			end
 			for _, section in self.Sections do
-				add(section, section.Name, section.Tab.Name .. " / " .. section.Name .. "  \u{00B7}  Section")
+				add(section, section.Name, section.Tab.Name .. " / " .. section.Name .. "  \194\183  Section")
 			end
 			for _, item in self.Index do
-				add(item, item.Name, item.Section.Tab.Name .. " / " .. item.Section.Name .. "  \u{00B7}  " .. item.Kind)
+				add(item, item.Name, item.Section.Tab.Name .. " / " .. item.Section.Name .. "  \194\183  " .. item.Kind)
 			end
 		end
+		local toRemove = {}
 		for entry, row in search.Rows do
 			if not wanted[entry] then
-				search.Rows[entry] = nil
-				retire(row)
+				table.insert(toRemove, { entry = entry, row = row })
 			end
+		end
+		for _, item in toRemove do
+			search.Rows[item.entry] = nil
+			retire(item.row)
 		end
 		local fresh = 0
 		for index, data in order do
@@ -2461,7 +2487,6 @@ function Window:SetVisible(visible)
 	end
 	if visible then
 		animate(self.Scale, "Scale", 1, "Smooth", {
-			-- A UIScale is removed once idle so text is never resampled at rest.
 			Done = function()
 				if self.Visible then self.Scale.Parent = nil end
 			end,
@@ -2487,7 +2512,7 @@ function Window:_serialize()
 		if object.Swatch then
 			value = { Color = object.Value:ToHex(), Alpha = object.Alpha }
 		elseif object.Chip then
-			value = { Key = object.Key and object.Key.Name or false, Mode = object.Mode }
+			value = { Key = object.Key and (typeof(object.Key) == "EnumItem" and object.Key.Name or tostring(object.Key)) or false, Mode = object.Mode }
 		elseif object.Multi then
 			local list = {}
 			for option, enabled in object.Value do
@@ -2501,34 +2526,50 @@ function Window:_serialize()
 end
 
 function Window:_deserialize(json)
-	local data = HttpService:JSONDecode(json)
+	local ok, data = pcall(function() return HttpService:JSONDecode(json) end)
+	if not ok or type(data) ~= "table" then return false end
 	for flag, value in data do
 		local object = self.Flags[flag]
 		if object then
 			if object.Swatch then
-				object:Set(Color3.fromHex(value.Color), value.Alpha)
-			elseif object.Chip then
-				object.Mode = value.Mode or object.Mode
-				local key = nil
-				if value.Key then
-					key = string.find(value.Key, "MouseButton", 1, true) and Enum.UserInputType[value.Key] or Enum.KeyCode[value.Key]
+				if type(value) == "table" and value.Color then
+					pcall(function() object:Set(Color3.fromHex(value.Color), value.Alpha) end)
 				end
-				object:Set(key)
+			elseif object.Chip then
+				if type(value) == "table" then
+					object.Mode = value.Mode or object.Mode
+					local key = nil
+					if value.Key then
+						local k = string.find(value.Key, "MouseButton", 1, true) and Enum.UserInputType[value.Key] or Enum.KeyCode[value.Key]
+						key = k
+					end
+					object:Set(key)
+				end
 			else
 				object:Set(value)
 			end
 		end
 	end
+	return true
 end
 
 function Window:ListConfigs()
 	local names = {}
-	if typeof(listfiles) == "function" and typeof(isfolder) == "function" and isfolder("Blossom") then
-		for _, path in listfiles("Blossom") do
-			local name = string.match(path, "([^/\\]+)%.json$")
-			if name then table.insert(names, name) end
+	local listed = false
+	if typeof(listfiles) == "function" and typeof(isfolder) == "function" then
+		local ok, hasFolder = pcall(isfolder, "Blossom")
+		if ok and hasFolder then
+			local okFiles, files = pcall(listfiles, "Blossom")
+			if okFiles and type(files) == "table" then
+				listed = true
+				for _, path in files do
+					local name = string.match(path, "([^/\\]+)%.json$")
+					if name then table.insert(names, name) end
+				end
+			end
 		end
-	else
+	end
+	if not listed then
 		for name in ConfigMemory do table.insert(names, name) end
 	end
 	table.sort(names)
@@ -2538,27 +2579,33 @@ end
 function Window:SaveConfig(name)
 	local json = self:_serialize()
 	if typeof(writefile) == "function" then
-		if typeof(isfolder) == "function" and not isfolder("Blossom") then makefolder("Blossom") end
-		writefile(configPath(name), json)
-	else
-		ConfigMemory[name] = json
+		if typeof(isfolder) == "function" and typeof(makefolder) == "function" then
+			local ok, exists = pcall(isfolder, "Blossom")
+			if ok and not exists then pcall(makefolder, "Blossom") end
+		end
+		if pcall(writefile, configPath(name), json) then return end
 	end
+	ConfigMemory[name] = json
 end
 
 function Window:LoadConfig(name)
 	local json
-	if typeof(readfile) == "function" and typeof(isfile) == "function" and isfile(configPath(name)) then
-		json = readfile(configPath(name))
-	else
-		json = ConfigMemory[name]
+	if typeof(readfile) == "function" and typeof(isfile) == "function" then
+		local ok, exists = pcall(isfile, configPath(name))
+		if ok and exists then
+			local okRead, content = pcall(readfile, configPath(name))
+			if okRead then json = content end
+		end
 	end
-	if json then self:_deserialize(json); return true end
+	if not json then json = ConfigMemory[name] end
+	if json then return self:_deserialize(json) end
 	return false
 end
 
 function Window:DeleteConfig(name)
-	if typeof(delfile) == "function" and typeof(isfile) == "function" and isfile(configPath(name)) then
-		delfile(configPath(name))
+	if typeof(delfile) == "function" and typeof(isfile) == "function" then
+		local ok, exists = pcall(isfile, configPath(name))
+		if ok and exists then pcall(delfile, configPath(name)) end
 	end
 	ConfigMemory[name] = nil
 end
@@ -2568,7 +2615,12 @@ local AutoloadMemory
 
 local function readAutoload()
 	if typeof(readfile) == "function" and typeof(isfile) == "function" then
-		return isfile(AUTOLOAD_PATH) and readfile(AUTOLOAD_PATH) or nil
+		local ok, exists = pcall(isfile, AUTOLOAD_PATH)
+		if ok and exists then
+			local okRead, content = pcall(readfile, AUTOLOAD_PATH)
+			if okRead then return content end
+		end
+		return nil
 	end
 	return AutoloadMemory
 end
@@ -2577,10 +2629,16 @@ local function writeAutoload(name)
 	if typeof(writefile) ~= "function" then
 		AutoloadMemory = name
 	elseif name then
-		if typeof(isfolder) == "function" and not isfolder("Blossom") then makefolder("Blossom") end
-		writefile(AUTOLOAD_PATH, name)
-	elseif typeof(delfile) == "function" and isfile(AUTOLOAD_PATH) then
-		delfile(AUTOLOAD_PATH)
+		if typeof(isfolder) == "function" and typeof(makefolder) == "function" then
+			local ok, exists = pcall(isfolder, "Blossom")
+			if ok and not exists then pcall(makefolder, "Blossom") end
+		end
+		if not pcall(writefile, AUTOLOAD_PATH, name) then
+			AutoloadMemory = name
+		end
+	elseif typeof(delfile) == "function" and typeof(isfile) == "function" then
+		local ok, exists = pcall(isfile, AUTOLOAD_PATH)
+		if ok and exists then pcall(delfile, AUTOLOAD_PATH) end
 	end
 end
 
@@ -2660,7 +2718,7 @@ function Window:BuildSettings(tab)
 end
 
 function Window:_buildWatermark(options)
-	local player = Players.LocalPlayer
+	local player = Players.LocalPlayer or { DisplayName = "User", Name = "User" }
 	local frame = new("Frame", { Bg = "Background", Size = Offset(298, 28), Radius = Metrics.FloatRadius, Border = "Outline", Active = true }, self.Screen)
 	makeIcon(frame, "logo", 16, "Accent", "Background", { Position = Offset(8, 6) })
 	local function text(value, size, weight)
@@ -2672,7 +2730,7 @@ function Window:_buildWatermark(options)
 	local first, firstSep = text(options.Script or "blossom.lua", 12, Enum.FontWeight.Medium), sep()
 	local second, secondSep = text(options.Build or "release", 12, Enum.FontWeight.SemiBold), sep()
 	local userIcon = makeIcon(frame, "user", 13, "Text", "Background")
-	local third = text(("%s (@%s)"):format(player.DisplayName, player.Name), 11, Enum.FontWeight.SemiBold)
+	local third = text(("%s (@%s)"):format(player.DisplayName or "User", player.Name or "User"), 11, Enum.FontWeight.SemiBold)
 	local function layout()
 		local x = 31
 		for _, entry in { { first, firstSep }, { second, secondSep } } do
@@ -2711,7 +2769,6 @@ function Window:_buildHotkeys()
 	self:_makeDraggable(head, holder)
 end
 
--- Everything anchored to the screen is placed at whole pixels, the main defence against blurry text.
 function Window:_placeOverlays()
 	local size = self.Screen.AbsoluteSize
 	if size.X <= 0 then return end
@@ -2723,7 +2780,9 @@ function Window:_placeOverlays()
 end
 
 function Window:Destroy()
-	for _, connection in self.Connections do connection:Disconnect() end
+	if self.Connections then
+		for _, connection in self.Connections do connection:Disconnect() end
+	end
 	table.clear(Jobs)
 	table.clear(HoverSet)
 	for _, entry in Active do entry.Dead = true end
@@ -2735,28 +2794,10 @@ function Window:Destroy()
 	end
 	if Focus == self then Focus = nil end
 	if ScreenRef == self.Screen then ScreenRef = nil end
-	self.Screen:Destroy()
+	if self.Screen then self.Screen:Destroy() end
 end
-
-local m5ware = { Themes = Themes, ThemeOrder = ThemeOrder, Metrics = Metrics, Fonts = Fonts }
 
 local LastWindow
-
--- Защищённый вызов new: если библиотека не загрузилась, выводим понятную ошибку,
--- а не "attempt to index nil with 'new'".
-local function safeNew(win, options)
-	if type(win) ~= "table" or type(win.new) ~= "function" then
-		error(
-			"Blossom library failed to load: Blossom = " .. tostring(win) ..
-			", Blossom.new = " .. tostring(type(win) == "table" and win.new or nil) ..
-			". Проверьте, что файл Blossom.luau существует, не пуст и заканчивается 'return Blossom'.",
-			2
-		)
-	end
-	return win.new(options)
-end
-
-local Blossom = { new = nil }
 
 function Blossom.new(options)
 	options = options or {}
@@ -2798,7 +2839,6 @@ function Blossom.new(options)
 	addShadow(root, "Large")
 	win.Root = root
 	win.Fader = newFader(holder)
-	-- A Modal button frees the cursor from first-person camera lock while the menu is open.
 	win.ModalButton = new("TextButton", { Modal = true, Size = Offset(1, 1) }, holder)
 
 	local sidebar = new("Frame", { Size = Dim2(0, Metrics.SidebarW, 1, 0) }, root)
@@ -2876,7 +2916,7 @@ function Blossom.new(options)
 			return
 		end
 		if processed then return end
-		if input.KeyCode == win.MenuKey then win:Toggle() end
+		if input.KeyCode == win.MenuKey or input.UserInputType == win.MenuKey then win:Toggle() end
 		for _, object in win.Binds do
 			if object.Key and (object.Key == input.KeyCode or object.Key == input.UserInputType) and object.OnPress then
 				object.OnPress()
@@ -2951,6 +2991,7 @@ function Blossom.new(options)
 	win.Watermark.Visible, win.Hotkeys.Visible = false, false
 	task.defer(function()
 		if win.Screen.Parent == nil then return end
+		win:_placeOverlays()
 		win:SetVisible(true)
 		newFader(win.Watermark):Show()
 		newFader(win.Hotkeys):Show()
@@ -2958,8 +2999,5 @@ function Blossom.new(options)
 
 	return win
 end
-
--- Безопасная обёртка для пользователей, которые хотят вызывать Blossom.new извне.
-Blossom.SafeNew = function(options) return safeNew(Blossom, options) end
 
 return Blossom
